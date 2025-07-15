@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "339686864346",
+    "firebase_url": "https://lahcomprah-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "lahcomprah",
+    "storage_bucket": "lahcomprah.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:339686864346:android:6972302b07cfcb6f503ce3",
+        "android_client_info": {
+          "package_name": "com.example.lahcomprahv2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAM3ZsHNS8pBzbjw7I2-kq4mjRwGkc8AD0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:339686864346:android:30f18a4324329443503ce3",
+        "android_client_info": {
+          "package_name": "com.rafario.lahcomprah"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAM3ZsHNS8pBzbjw7I2-kq4mjRwGkc8AD0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
