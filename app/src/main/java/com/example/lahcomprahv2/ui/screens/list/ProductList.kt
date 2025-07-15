@@ -1,9 +1,5 @@
 package com.example.lahcomprahv2.ui.screens.list
 
-import android.content.Context
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,9 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -29,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Add
@@ -40,7 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -61,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -69,7 +62,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.example.lahcomprahv2.R
 import com.example.lahcomprahv2.models.Product
 import com.example.lahcomprahv2.ui.theme.OnSecondaryColor
@@ -81,8 +73,9 @@ import java.util.Locale
 @Composable
 fun ListaProductosScreen(viewModel: ProductListViewModel = ProductListViewModel()) {
     val productos by viewModel.productos.collectAsState()
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showBottomSheet by remember { mutableStateOf(false) }
+    var selectedProduct by remember { mutableStateOf<Product?>(null) }
 
     Scaffold(
         topBar = {
@@ -104,6 +97,7 @@ fun ListaProductosScreen(viewModel: ProductListViewModel = ProductListViewModel(
                             .clip(CircleShape)
                             .size(35.dp)
                             .clickable {
+                                selectedProduct = null // Limpiar producto seleccionado para agregar nuevo
                                 showBottomSheet = true
                             },
                         tint = Color.White
@@ -114,19 +108,32 @@ fun ListaProductosScreen(viewModel: ProductListViewModel = ProductListViewModel(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            ProductList(productos, viewModel)
+            ProductList(productos, viewModel, onEdit = { product ->
+                selectedProduct = product // Establecer el producto a editar
+                showBottomSheet = true
+            })
             if (showBottomSheet) {
                 ModalBottomSheet(
-                    onDismissRequest = { showBottomSheet = false },
+                    onDismissRequest = {
+                        showBottomSheet = false
+                        selectedProduct = null
+                    },
                     sheetState = sheetState,
                     windowInsets = WindowInsets.ime
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.ime) // Aplica padding solo para el teclado
+                            .windowInsetsPadding(WindowInsets.ime)
                     ) {
-                        BottomSheetAddProduct(viewModel) { showBottomSheet = false }
+                        BottomSheetAddProduct(
+                            viewModel = viewModel,
+                            productToEdit = selectedProduct,
+                            onDismiss = {
+                                showBottomSheet = false
+                                selectedProduct = null
+                            }
+                        )
                     }
                 }
             }
@@ -138,17 +145,22 @@ fun ListaProductosScreen(viewModel: ProductListViewModel = ProductListViewModel(
 fun ProductList(
     productos: List<Product>,
     viewModel: ProductListViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onEdit: (Product) -> Unit
 ) {
     LazyColumn(modifier = modifier) {
         itemsIndexed(productos) { _, producto ->
-            ProductItem(producto, onClick = { viewModel.eliminarProducto(producto) })
+            ProductItem(
+                producto = producto,
+                onDelete = { viewModel.eliminarProducto(producto) },
+                onEdit = { onEdit(producto) }
+            )
         }
     }
 }
 
 @Composable
-fun ProductItem(producto: Product, onClick: () -> Unit) {
+fun ProductItem(producto: Product, onDelete: () -> Unit, onEdit: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -163,17 +175,6 @@ fun ProductItem(producto: Product, onClick: () -> Unit) {
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            producto.imagenUrl?.let {
-                AsyncImage(
-                    model = it,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = producto.nombre.replaceFirstChar {
@@ -189,7 +190,15 @@ fun ProductItem(producto: Product, onClick: () -> Unit) {
                 )
             }
 
-            IconButton(onClick = onClick) {
+            IconButton(onClick = onEdit) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Editar producto",
+                    tint = SurfaceColor
+                )
+            }
+
+            IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Eliminar producto",
@@ -204,23 +213,26 @@ fun ProductItem(producto: Product, onClick: () -> Unit) {
 @Composable
 fun BottomSheetAddProduct(
     viewModel: ProductListViewModel,
+    productToEdit: Product? = null,
     onDismiss: () -> Unit
 ) {
-    var nombre by remember { mutableStateOf("") }
-    var cantidad by remember { mutableIntStateOf(1) }
+    var nombre by remember { mutableStateOf(productToEdit?.nombre ?: "") }
+    var cantidad by remember { mutableIntStateOf(productToEdit?.cantidad ?: 1) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    val isEditing = productToEdit != null
 
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .imePadding(), // Evita que el teclado tape contenido
+            .imePadding(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             Text(
-                text = "Agregar Producto",
+                text = if (isEditing) "Editar Producto" else "Agregar Producto",
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
@@ -233,7 +245,7 @@ fun BottomSheetAddProduct(
                 onValueChange = { nombre = it },
                 label = { Text("Nombre") },
                 keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Words
+                    capitalization = KeyboardCapitalization.Sentences
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -288,7 +300,17 @@ fun BottomSheetAddProduct(
                 onClick = {
                     if (nombre.isNotBlank()) {
                         keyboardController?.hide()
-                        viewModel.agregarProductoConImagen(nombre, cantidad)
+                        if (isEditing) {
+                            // Editar producto existente
+                            val updatedProduct = productToEdit!!.copy(
+                                nombre = nombre,
+                                cantidad = cantidad
+                            )
+                            viewModel.editarProducto(updatedProduct)
+                        } else {
+                            // Agregar nuevo producto
+                            viewModel.agregarProductoConImagen(nombre, cantidad)
+                        }
                         onDismiss()
                     }
                 },
@@ -298,16 +320,15 @@ fun BottomSheetAddProduct(
                 enabled = nombre.isNotBlank()
             ) {
                 Icon(
-                    imageVector = Icons.Default.Add,
+                    imageVector = if (isEditing) Icons.Default.Edit else Icons.Default.Add,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Agregar Producto")
+                Text(if (isEditing) "Actualizar Producto" else "Agregar Producto")
             }
         }
     }
-
 
     // Auto-focus en el campo de texto cuando se abre el bottom sheet
     LaunchedEffect(Unit) {

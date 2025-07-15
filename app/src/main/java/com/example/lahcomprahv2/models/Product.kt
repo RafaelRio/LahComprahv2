@@ -1,8 +1,7 @@
 package com.example.lahcomprahv2.models
 
 data class Product(
-    val id: String = "",
-    val nombre: String = "",
-    val cantidad: Int = 0,
-    val imagenUrl: String? = null
+    var id: String = "",
+    var nombre: String = "",
+    var cantidad: Int = 0
 )
