@@ -1,3 +1,19 @@
 <resources>
     <string name="app_name">LahComprahV2</string>
+    <string name="add_product">Agregar producto</string>
+    <string name="add_product_title">Agregar producto</string>
+    <string name="update_product">Actualizar producto</string>
+    <string name="edit_product">Editar producto</string>
+    <string name="edit_product_title">Editar producto</string>
+    <string name="delete_product">Eliminar producto</string>
+    <string name="product_name">Nombre</string>
+    <string name="product_quantity">Cantidad: %1$d</string>
+    <string name="increase_quantity">Aumentar cantidad</string>
+    <string name="decrease_quantity">Disminuir cantidad</string>
+    <string name="empty_products">No hay productos todavía. Añade el primero para empezar.</string>
+    <string name="delete_product_confirmation_title">Eliminar producto</string>
+    <string name="delete_product_confirmation_message">¿Eliminar %1$s de la lista?</string>
+    <string name="cancel">Cancelar</string>
+    <string name="confirm">Confirmar</string>
+    <string name="saving">Guardando…</string>
 </resources>
