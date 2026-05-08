@@ -93,3 +93,11 @@ class ProductListViewModel(
         }
     }
 }
+
+data class ProductListUiState(
+    val products: List<Product> = emptyList(),
+    val isLoading: Boolean = true,
+    val isSaving: Boolean = false,
+    val completedOperationCount: Int = 0,
+    val errorMessage: String? = null
+)
