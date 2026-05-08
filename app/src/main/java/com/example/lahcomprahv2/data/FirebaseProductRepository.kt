@@ -1,5 +1,6 @@
 package com.example.lahcomprahv2.data
 
+import com.example.lahcomprahv2.analytics.ProductAnalytics
 import com.example.lahcomprahv2.models.Product
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -14,6 +15,7 @@ import kotlinx.coroutines.tasks.await
 import kotlin.coroutines.cancellation.CancellationException
 
 class FirebaseProductRepository(
+    private val productAnalytics: ProductAnalytics,
     private val database: DatabaseReference =
         FirebaseDatabase.getInstance().getReference(PRODUCTS_PATH)
 ) : ProductRepository {
@@ -38,15 +40,19 @@ class FirebaseProductRepository(
 
     override suspend fun addProduct(name: String, quantity: Int) {
         val id = database.push().key ?: error("Unable to generate Firebase key")
-        database.child(id).setValue(Product(id = id, nombre = name, cantidad = quantity)).await()
+        val product = Product(id = id, nombre = name, cantidad = quantity)
+        database.child(id).setValue(product).await()
+        productAnalytics.logProductCreated(product)
     }
 
     override suspend fun deleteProduct(product: Product) {
         database.child(product.id).removeValue().await()
+        productAnalytics.logProductDeleted(product)
     }
 
     override suspend fun updateProduct(product: Product) {
         database.child(product.id).setValue(product).await()
+        productAnalytics.logProductUpdated(product)
     }
 
     private companion object {
