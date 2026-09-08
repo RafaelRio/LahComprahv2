@@ -45,7 +45,11 @@ class ProductListViewModelTest {
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.isLoading)
-        assertEquals("firebase down", viewModel.uiState.value.errorMessage)
+        assertEquals(
+            "No se pudo sincronizar la lista. Inténtalo de nuevo.",
+            viewModel.uiState.value.syncErrorMessage
+        )
+        assertNull(viewModel.uiState.value.errorMessage)
     }
 
     @Test
@@ -63,14 +67,41 @@ class ProductListViewModelTest {
 
     @Test
     fun `clear error resets visible error message`() = runTest {
-        val viewModel = ProductListViewModel(FailingProductRepository("boom"))
+        val viewModel = ProductListViewModel(
+            FailingSaveProductRepository()
+        )
         advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value.errorMessage != null)
+        // Provocamos un fallo al guardar.
+        viewModel.addProduct("Leche", 2)
+        advanceUntilIdle()
+
+        // Comprobamos que el error está presente.
+        assertEquals(
+            "No se pudo guardar el producto",
+            viewModel.uiState.value.errorMessage
+        )
+        assertFalse(viewModel.uiState.value.isSaving)
+        assertNull(viewModel.uiState.value.syncErrorMessage)
+
+        // Limpiamos el error y comprobamos el resultado.
         viewModel.clearError()
 
         assertNull(viewModel.uiState.value.errorMessage)
     }
+}
+
+private class FailingSaveProductRepository : ProductRepository {
+    override fun observeProducts(): Flow<List<Product>> =
+        MutableStateFlow(emptyList<Product>())
+
+    override suspend fun addProduct(name: String, quantity: Int) {
+        error("No se pudo guardar el producto")
+    }
+
+    override suspend fun deleteProduct(product: Product) = Unit
+
+    override suspend fun updateProduct(product: Product) = Unit
 }
 
 private class FakeProductRepository(
@@ -86,11 +117,11 @@ private class FakeProductRepository(
     override suspend fun addProduct(name: String, quantity: Int) {
         lastAddedName = name
         lastAddedQuantity = quantity
-        productFlow.value = productFlow.value + Product(
-            id = "generated",
-            nombre = name,
-            cantidad = quantity
-        )
+        productFlow.value += Product(
+                    id = "generated",
+                    nombre = name,
+                    cantidad = quantity
+                )
     }
 
     override suspend fun deleteProduct(product: Product) {

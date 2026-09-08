@@ -16,4 +16,5 @@
     <string name="cancel">Cancelar</string>
     <string name="confirm">Confirmar</string>
     <string name="saving">Guardando…</string>
+    <string name="retry">Reintentar</string>
 </resources>

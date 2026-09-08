@@ -1,5 +1,6 @@
 package com.example.lahcomprahv2.ui.screens.list
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,7 +41,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -49,18 +50,22 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -73,26 +78,57 @@ import com.example.lahcomprahv2.models.Product
 import com.example.lahcomprahv2.ui.theme.OnSecondaryColor
 import com.example.lahcomprahv2.ui.theme.SecondaryColor
 import com.example.lahcomprahv2.ui.theme.SurfaceColor
-import java.util.Locale
 import org.koin.androidx.compose.koinViewModel
+import java.util.Locale
 
 private const val PRODUCT_NAME_FIELD_TAG = "product_name_field"
 private const val DELETE_CONFIRM_DIALOG_TAG = "delete_confirm_dialog"
 
+private val ProductSaver = listSaver<Product?, Any>(
+    save = { product ->
+        if (product == null) {
+            emptyList()
+        } else {
+            listOf(product.id, product.nombre, product.cantidad)
+        }
+    },
+    restore = { values ->
+        if (values.isEmpty()) {
+            null
+        } else {
+            Product(
+                id = values[0] as String,
+                nombre = values[1] as String,
+                cantidad = values[2] as Int
+            )
+        }
+    }
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductsListScreen(viewModel: ProductListViewModel = koinViewModel()) {
+
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
     val snackbarHostState = remember { SnackbarHostState() }
-    var showBottomSheet by remember { mutableStateOf(false) }
-    var selectedProduct by remember { mutableStateOf<Product?>(null) }
-    var productPendingDelete by remember { mutableStateOf<Product?>(null) }
-    var dismissSheetOnCompletedOperation by remember { mutableIntStateOf(-1) }
+    var showBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var selectedProduct by rememberSaveable(stateSaver = ProductSaver) {
+        mutableStateOf(null)
+    }
+    var productPendingDelete by rememberSaveable(stateSaver = ProductSaver) {
+        mutableStateOf(null)
+    }
+    var dismissSheetOnCompletedOperation by rememberSaveable { mutableIntStateOf(-1) }
+
+
 
     LaunchedEffect(uiState.completedOperationCount, dismissSheetOnCompletedOperation) {
         if (dismissSheetOnCompletedOperation == -1) return@LaunchedEffect
         if (uiState.completedOperationCount < dismissSheetOnCompletedOperation) return@LaunchedEffect
+        Log.d("ProductSheet", "Cierre por operación completada")
         dismissSheetOnCompletedOperation = -1
         showBottomSheet = false
         selectedProduct = null
@@ -100,128 +136,161 @@ fun ProductsListScreen(viewModel: ProductListViewModel = koinViewModel()) {
 
     LaunchedEffect(uiState.errorMessage) {
         val errorMessage = uiState.errorMessage ?: return@LaunchedEffect
+
+        dismissSheetOnCompletedOperation = -1
         snackbarHostState.showSnackbar(errorMessage)
         viewModel.clearError()
-        dismissSheetOnCompletedOperation = -1
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(text = stringResource(R.string.app_name), fontWeight = FontWeight.Bold)
-                }, colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = SecondaryColor,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
-                ), actions = {
+    LaunchedEffect(
+        showBottomSheet,
+        selectedProduct?.id,
+        uiState.completedOperationCount,
+        dismissSheetOnCompletedOperation
+    ) {
+        Log.d(
+            "ProductSheet",
+            "abierto=$showBottomSheet, " +
+                    "producto=${selectedProduct?.id}, " +
+                    "completadas=${uiState.completedOperationCount}, " +
+                    "esperada=$dismissSheetOnCompletedOperation"
+        )
+    }
+
+    Scaffold(snackbarHost = { SnackbarHost(hostState = snackbarHostState) }, topBar = {
+        TopAppBar(
+            title = {
+                Text(text = stringResource(R.string.app_name), fontWeight = FontWeight.Bold)
+            }, colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = SecondaryColor,
+                titleContentColor = Color.White,
+                actionIconContentColor = Color.White
+            ), actions = {
+                IconButton(
+                    onClick = {
+                        selectedProduct = null
+                        showBottomSheet = true
+                    },
+                    enabled = !uiState.isSaving
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Add,
-                        contentDescription = stringResource(R.string.add_product),
-                        modifier = Modifier
-                            .padding(end = 20.dp)
-                            .clip(CircleShape)
-                            .size(35.dp)
-                            .clickable {
-                                selectedProduct = null // Limpiar producto seleccionado para agregar nuevo
-                                showBottomSheet = true
-                            },
-                        tint = Color.White
+                        contentDescription = stringResource(R.string.add_product)
                     )
                 }
-            )
+            })
 
-        }
-    ) { innerPadding ->
+    }) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
             if (uiState.isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            ProductList(
-                products = uiState.products,
-                onDelete = { product ->
-                    productPendingDelete = product
-                },
-                onEdit = { product ->
-                    selectedProduct = product // Establecer el producto a editar
-                    showBottomSheet = true
+            // Aviso de error de sincronización y botón para reintentar.
+            uiState.syncErrorMessage?.let { message ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error
+                    )
+
+                    Button(
+                        onClick = { viewModel.retryObservation() },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Text(stringResource(R.string.retry))
+                    }
                 }
-            )
+            }
+
+            val showProductList =
+                uiState.products.isNotEmpty() ||
+                        (!uiState.isLoading && uiState.syncErrorMessage == null)
+
+            if (showProductList) {
+                ProductList(
+                    products = uiState.products,
+                    enabled = !uiState.isSaving,
+                    onDelete = { product ->
+                        productPendingDelete = product
+                    },
+                    onEdit = { product ->
+                        selectedProduct = product
+                        showBottomSheet = true
+                    }
+                )
+            }
+
             if (showBottomSheet) {
                 ModalBottomSheet(
                     onDismissRequest = {
+                        Log.d("ProductSheet", "ModalBottomSheet solicita cerrar")
+
                         if (!uiState.isSaving) {
                             showBottomSheet = false
                             selectedProduct = null
                         }
                     },
-                    sheetState = sheetState,
-                    contentWindowInsets = { WindowInsets.ime }
+                    sheetState = sheetState
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.ime)
-                    ) {
-                        BottomSheetAddProduct(
-                            viewModel = viewModel,
-                            isSaving = uiState.isSaving,
-                            onSaveSucceeded = {
-                                dismissSheetOnCompletedOperation = uiState.completedOperationCount + 1
-                            },
-                            productToEdit = selectedProduct,
-                            onDismiss = {
-                                dismissSheetOnCompletedOperation = -1
-                                showBottomSheet = false
-                                selectedProduct = null
+                    BottomSheetAddProduct(
+                        isSaving = uiState.isSaving,
+                        productToEdit = selectedProduct,
+                        onSave = { name, quantity ->
+                            dismissSheetOnCompletedOperation =
+                                uiState.completedOperationCount + 1
+
+                            val product = selectedProduct
+
+                            if (product == null) {
+                                viewModel.addProduct(name, quantity)
+                            } else {
+                                viewModel.updateProduct(
+                                    product.copy(
+                                        nombre = name,
+                                        cantidad = quantity
+                                    )
+                                )
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             }
 
             val productToDelete = productPendingDelete
             if (productToDelete != null) {
-                AlertDialog(
-                    onDismissRequest = {
-                        if (!uiState.isSaving) {
-                            productPendingDelete = null
-                        }
-                    },
-                    modifier = Modifier.testTag(DELETE_CONFIRM_DIALOG_TAG),
-                    title = {
-                        Text(stringResource(R.string.delete_product_confirmation_title))
-                    },
-                    text = {
-                        Text(
-                            stringResource(
-                                R.string.delete_product_confirmation_message,
-                                productToDelete.nombre
-                            )
-                        )
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                viewModel.deleteProduct(productToDelete)
-                                productPendingDelete = null
-                            },
-                            enabled = !uiState.isSaving
-                        ) {
-                            Text(stringResource(R.string.confirm))
-                        }
-                    },
-                    dismissButton = {
-                        Button(
-                            onClick = { productPendingDelete = null },
-                            enabled = !uiState.isSaving
-                        ) {
-                            Text(stringResource(R.string.cancel))
-                        }
+                AlertDialog(onDismissRequest = {
+                    if (!uiState.isSaving) {
+                        productPendingDelete = null
                     }
-                )
+                }, modifier = Modifier.testTag(DELETE_CONFIRM_DIALOG_TAG), title = {
+                    Text(stringResource(R.string.delete_product_confirmation_title))
+                }, text = {
+                    Text(
+                        stringResource(
+                            R.string.delete_product_confirmation_message, productToDelete.nombre
+                        )
+                    )
+                }, confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteProduct(productToDelete)
+                            productPendingDelete = null
+                        }, enabled = !uiState.isSaving
+                    ) {
+                        Text(stringResource(R.string.confirm))
+                    }
+                }, dismissButton = {
+                    Button(
+                        onClick = { productPendingDelete = null }, enabled = !uiState.isSaving
+                    ) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                })
             }
         }
     }
@@ -230,6 +299,7 @@ fun ProductsListScreen(viewModel: ProductListViewModel = koinViewModel()) {
 @Composable
 fun ProductList(
     products: List<Product>,
+    enabled: Boolean,
     onDelete: (Product) -> Unit,
     modifier: Modifier = Modifier,
     onEdit: (Product) -> Unit
@@ -238,8 +308,7 @@ fun ProductList(
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
+                .padding(32.dp), contentAlignment = Alignment.Center
         ) {
             Text(
                 text = stringResource(R.string.empty_products),
@@ -254,15 +323,15 @@ fun ProductList(
         items(items = products, key = { it.id }) { product ->
             ProductItem(
                 product = product,
+                enabled = enabled,
                 onDelete = { onDelete(product) },
-                onEdit = { onEdit(product) }
-            )
+                onEdit = { onEdit(product) })
         }
     }
 }
 
 @Composable
-fun ProductItem(product: Product, onDelete: () -> Unit, onEdit: () -> Unit) {
+fun ProductItem(product: Product, enabled: Boolean, onDelete: () -> Unit, onEdit: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -281,9 +350,7 @@ fun ProductItem(product: Product, onDelete: () -> Unit, onEdit: () -> Unit) {
                 Text(
                     text = product.nombre.replaceFirstChar {
                         if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString()
-                    },
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
+                    }, fontWeight = FontWeight.Bold, fontSize = 20.sp
                 )
                 Text(
                     text = stringResource(R.string.product_quantity, product.cantidad),
@@ -292,7 +359,7 @@ fun ProductItem(product: Product, onDelete: () -> Unit, onEdit: () -> Unit) {
                 )
             }
 
-            IconButton(onClick = onEdit) {
+            IconButton(onClick = onEdit, enabled = enabled) {
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = stringResource(R.string.edit_product),
@@ -300,7 +367,7 @@ fun ProductItem(product: Product, onDelete: () -> Unit, onEdit: () -> Unit) {
                 )
             }
 
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, enabled = enabled) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = stringResource(R.string.delete_product),
@@ -314,14 +381,12 @@ fun ProductItem(product: Product, onDelete: () -> Unit, onEdit: () -> Unit) {
 
 @Composable
 fun BottomSheetAddProduct(
-    viewModel: ProductListViewModel,
     isSaving: Boolean,
-    onSaveSucceeded: () -> Unit,
-    productToEdit: Product? = null,
-    onDismiss: () -> Unit
+    onSave: (String, Int) -> Unit,
+    productToEdit: Product? = null
 ) {
-    var name by remember(productToEdit?.id) { mutableStateOf(productToEdit?.nombre.orEmpty()) }
-    var quantity by remember(productToEdit?.id) { mutableIntStateOf(productToEdit?.cantidad ?: 1) }
+    var name by rememberSaveable(productToEdit?.id) { mutableStateOf(productToEdit?.nombre.orEmpty()) }
+    var quantity by rememberSaveable(productToEdit?.id) { mutableIntStateOf(productToEdit?.cantidad ?: 1) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -335,8 +400,7 @@ fun BottomSheetAddProduct(
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .imePadding(),
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -356,6 +420,7 @@ fun BottomSheetAddProduct(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
+                enabled = !isSaving,
                 label = { Text(stringResource(R.string.product_name)) },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences
@@ -375,6 +440,7 @@ fun BottomSheetAddProduct(
             ) {
                 IconButton(
                     onClick = { if (quantity > 1) quantity-- },
+                    enabled = !isSaving && quantity > 1,
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(SecondaryColor)
@@ -388,13 +454,12 @@ fun BottomSheetAddProduct(
                 }
 
                 Text(
-                    text = quantity.toString(),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
+                    text = quantity.toString(), fontSize = 20.sp, fontWeight = FontWeight.Bold
                 )
 
                 IconButton(
                     onClick = { quantity++ },
+                    enabled = !isSaving && quantity < Int.MAX_VALUE,
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(SecondaryColor)
@@ -412,18 +477,9 @@ fun BottomSheetAddProduct(
         item {
             Button(
                 onClick = {
-                    if (name.isNotBlank()) {
+                    if (name.isNotBlank() && !isSaving) {
                         keyboardController?.hide()
-                        onSaveSucceeded()
-                        if (isEditing) {
-                            val updatedProduct = productToEdit.copy(
-                                nombre = name.trim(),
-                                cantidad = quantity
-                            )
-                            viewModel.updateProduct(updatedProduct)
-                        } else {
-                            viewModel.addProduct(name, quantity)
-                        }
+                        onSave(name.trim(), quantity)
                     }
                 },
                 modifier = Modifier
@@ -434,9 +490,7 @@ fun BottomSheetAddProduct(
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
+                        modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.saving))

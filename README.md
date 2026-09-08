@@ -15,7 +15,10 @@ Desarrollada con **Kotlin** y **Jetpack Compose**, utiliza **Firebase Realtime D
 * Sincronizar la lista en tiempo real mediante Firebase.
 * Ordenar automáticamente los productos por nombre.
 * Mostrar estados de carga y guardado.
-* Gestionar errores mediante `Snackbar`.
+* Mostrar errores de operaciones mediante `Snackbar` y errores de sincronización con un botón **Reintentar**.
+* Validar nombres, cantidades e identificadores antes de escribir en Firebase.
+* Impedir operaciones simultáneas desde el mismo ViewModel y bloquear los controles durante el guardado.
+* Conservar el borrador y el producto seleccionado al girar la pantalla.
 * Registrar eventos de creación, edición y eliminación mediante Firebase Analytics.
 * Tests instrumentados de interfaz con Jetpack Compose.
 
@@ -60,6 +63,8 @@ Firebase Realtime Database
 ```
 
 El `ViewModel` no accede directamente a Firebase. En su lugar, trabaja con la interfaz `ProductRepository`, permitiendo desacoplar la capa de presentación de la fuente de datos.
+
+El formulario `BottomSheetAddProduct` recibe datos y un callback `onSave(name, quantity)`. `ProductsListScreen` decide si debe añadir o actualizar y delega la operación en el ViewModel. La pantalla recoge el estado mediante `collectAsStateWithLifecycle`.
 
 ---
 
@@ -125,6 +130,10 @@ products/
 
 La aplicación escucha los cambios mediante un `ValueEventListener` que se transforma en un `Flow` utilizando `callbackFlow`.
 
+El listener se elimina con `awaitClose` al terminar la observación. Los errores de Firebase cierran el flujo con su excepción; el ViewModel muestra un error de sincronización y permite volver a suscribirse mediante `retryObservation()`, evitando duplicar una observación activa.
+
+Antes de escribir, el repositorio recorta los espacios del nombre y exige un nombre no vacío y una cantidad mayor que cero. Para actualizar o eliminar, también rechaza identificadores vacíos y caracteres no válidos, incluidos los separadores de ruta.
+
 Esto permite que la interfaz se actualice automáticamente cuando se añade, modifica o elimina un producto.
 
 ```text
@@ -158,7 +167,8 @@ data class ProductListUiState(
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val completedOperationCount: Int = 0,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val syncErrorMessage: String? = null
 )
 ```
 
@@ -167,7 +177,12 @@ La interfaz puede reaccionar así a diferentes situaciones:
 * Carga inicial de productos.
 * Guardado de cambios.
 * Operaciones completadas.
-* Errores de Firebase.
+* Errores de operaciones (`errorMessage`).
+* Errores de observación y reintentos (`syncErrorMessage`).
+
+Recibir productos no borra un error de guardado. El ViewModel activa `isSaving` antes de lanzar la coroutine y rechaza nuevas operaciones mientras haya una pendiente. El bloqueo se libera en `finally`, y las cancelaciones de coroutines se propagan.
+
+`completedOperationCount` aumenta cuando una operación termina correctamente y permite que la pantalla cierre el formulario tras completar el guardado.
 
 ---
 
@@ -237,11 +252,30 @@ La misma interfaz permite:
 * Crear el producto.
 * Actualizar un producto existente.
 
+Durante el guardado se desactivan las acciones de añadir, editar y eliminar, además del nombre, los controles de cantidad y el botón de guardar del formulario.
+
+El estado del formulario utiliza `rememberSaveable`. Un `ProductSaver` basado en `listSaver` convierte el producto seleccionado en valores guardables para conservarlo al recrearse la actividad, por ejemplo, durante una rotación. El nombre y la cantidad del borrador también se conservan.
+
+El mensaje de lista vacía se muestra cuando la carga ha terminado sin error y no hay productos. Si ya existen productos, permanecen visibles durante una recarga o un error de sincronización.
+
 ---
 
 ## Testing
 
-El proyecto incluye tests instrumentados con **Compose UI Testing**.
+El proyecto incluye tests unitarios del ViewModel y tests instrumentados con **Compose UI Testing**.
+
+Los tests unitarios utilizan repositorios falsos y `MainDispatcherRule` para controlar las coroutines con `runTest` y `advanceUntilIdle`, sin conectarse a Firebase. Comprueban:
+
+* Carga y ordenación de productos.
+* Separación del error de sincronización respecto al error de operaciones.
+* Eliminación de espacios del nombre antes de añadir un producto.
+* Exposición y limpieza de un error de guardado, y liberación de `isSaving` tras el fallo.
+
+Para ejecutar los tests unitarios:
+
+```bash
+./gradlew testDebugUnitTest
+```
 
 Se utiliza un `FakeUiProductRepository` para probar el comportamiento de la interfaz sin depender de Firebase.
 
@@ -252,7 +286,7 @@ Entre los escenarios comprobados se encuentran:
 * Estado de carga mientras se guarda un producto.
 * Cierre del formulario únicamente cuando la operación ha terminado correctamente.
 
-Para ejecutar los tests:
+Para ejecutar los tests instrumentados, con un dispositivo o emulador conectado:
 
 ```bash
 ./gradlew connectedAndroidTest
@@ -263,7 +297,7 @@ Para ejecutar los tests:
 ## Requisitos
 
 * Android Studio
-* Java 11
+* JDK 21 para ejecutar Gradle (el código se compila con compatibilidad Java 11)
 * Android SDK
 * `minSdk 31`
 * `targetSdk 34`
@@ -288,6 +322,10 @@ cd LahComprahv2
 ```
 
 Ábrelo con Android Studio y sincroniza las dependencias de Gradle.
+
+Selecciona JDK 21 en **Settings > Build, Execution, Deployment > Build Tools > Gradle > Gradle JDK**.
+Para compilar desde la terminal, configura `JAVA_HOME` con la ruta de ese JDK.
+Evita fijar rutas locales con `org.gradle.java.home` en el `gradle.properties` del repositorio.
 
 Para compilar el APK de debug:
 
@@ -326,6 +364,17 @@ google-services.json
 ```text
 app/google-services.json
 ```
+
+---
+
+## Alcance y limitaciones
+
+* La aplicación utiliza el nodo compartido `products`; no implementa autenticación ni separación de listas por usuario o grupo. Las reglas remotas de acceso deben revisarse en Firebase y no están versionadas en este repositorio.
+* La validación del repositorio protege las operaciones realizadas desde este código; no sustituye las reglas de validación y acceso del servidor.
+* El bloqueo de operaciones se aplica a una instancia del ViewModel. No resuelve conflictos entre dispositivos que editan el mismo producto.
+* **Reintentar** vuelve a iniciar la observación; no corrige problemas de permisos ni representa un indicador de conectividad. No hay una interfaz específica para escrituras pendientes sin conexión.
+* Conservar el borrador no equivale a recuperar una operación en curso tras la terminación del proceso: el contador de operaciones del ViewModel no se persiste.
+* Analytics se ejecuta después de la escritura dentro de la misma operación; separar sus errores del resultado del guardado queda pendiente.
 
 ---
 
